@@ -27,13 +27,54 @@ func main() {
 	}
 
 	pauseQueueName := fmt.Sprintf("%s.%s", routing.PauseKey, username)
-
 	_, _, err = pubsub.DeclareAndBind(rbtConn, routing.ExchangePerilDirect, pauseQueueName, routing.PauseKey, pubsub.TransientQueue)
 	if err != nil {
 		log.Fatal("Failed to declare and bind the pause queue")
 	}
 
 	fmt.Println("Starting Peril client...")
+
+	gameState := gamelogic.NewGameState(username)
+
+	exitLoop := false
+	for {
+		words := gamelogic.GetInput()
+		if len(words) == 0 {
+			continue
+		}
+
+		switch w := words[0]; w {
+		case "spawn":
+			gameState.CommandSpawn(words)
+
+		case "move":
+			_, err := gameState.CommandMove(words)
+			if err != nil {
+				fmt.Println("Invalid move")
+				continue
+			}
+
+		case "status":
+			gameState.CommandStatus()
+
+		case "help":
+			gamelogic.PrintClientHelp()
+
+		case "spam":
+			fmt.Println("Spamming not allowed yet!")
+
+		case "quit":
+			gamelogic.PrintQuit()
+			exitLoop = true
+
+		default:
+			fmt.Println("Unknown command")
+		}
+
+		if exitLoop {
+			break
+		}
+	}
 
 	// Block until Ctrl+C is received
 	signalChan := make(chan os.Signal, 1)
