@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -18,12 +20,14 @@ func main() {
 	defer rbtConn.Close()
 	fmt.Println("RabbitMQ connection successful")
 
-	_, err = rbtConn.Channel()
+	rabbitChan, err := rbtConn.Channel()
 	if err != nil {
 		log.Fatal("Failed to create rabbit channel")
 	}
 
 	fmt.Println("Starting Peril server...")
+
+	pubsub.PublishJSON(rabbitChan, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
 
 	// Block until Ctrl+C is received
 	signalChan := make(chan os.Signal, 1)
