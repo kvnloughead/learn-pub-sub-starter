@@ -21,7 +21,7 @@ func main() {
 	defer rbtConn.Close()
 	fmt.Println("RabbitMQ connection successful")
 
-	rabbitChan, err := rbtConn.Channel()
+	rbtChan, err := rbtConn.Channel()
 	if err != nil {
 		log.Fatal("Failed to create rabbit channel")
 	}
@@ -29,6 +29,15 @@ func main() {
 	fmt.Println("Starting Peril server...")
 	gamelogic.PrintServerHelp()
 
+	startServerCommandLoop(rbtChan)
+
+	fmt.Println("RabbitMQ connection closed")
+}
+
+// startServerCommandLoop starts a loop that waits for user commands. It runs
+// until the user enters 'quit' or Ctrl+C. Type 'help' when the server is
+// running to see the possible commands.
+func startServerCommandLoop(rbtChan *amqp.Channel) {
 	exitLoop := false
 	for {
 		words := gamelogic.GetInput()
@@ -39,17 +48,20 @@ func main() {
 		switch w := words[0]; w {
 		case "pause":
 			fmt.Println("Sending 'pause' message")
-			err = pubsub.PublishJSON(rabbitChan, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
+			err := pubsub.PublishJSON(rbtChan, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
 			if err != nil {
 				log.Fatal("Failed to publish pause play state")
 			}
 
 		case "resume":
 			fmt.Println("Sending 'resume' message")
-			err = pubsub.PublishJSON(rabbitChan, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
+			err := pubsub.PublishJSON(rbtChan, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
 			if err != nil {
 				log.Fatal("Failed to publish pause play state")
 			}
+
+		case "help":
+			gamelogic.PrintServerHelp()
 
 		case "quit":
 			fmt.Println("Exiting program")
@@ -68,6 +80,4 @@ func main() {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
 	<-signalChan
-
-	fmt.Println("RabbitMQ connection closed")
 }

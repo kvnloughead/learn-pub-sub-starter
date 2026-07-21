@@ -33,9 +33,15 @@ func main() {
 	}
 
 	fmt.Println("Starting Peril client...")
-
 	gameState := gamelogic.NewGameState(username)
 
+	startClientCommandLoop(gameState)
+}
+
+// startClientCommandLoop starts a loop that waits for user commands. It runs
+// until the user enters 'quit' or Ctrl+C. Type 'help' when the server is
+// running to see the possible commands.
+func startClientCommandLoop(gameState *gamelogic.GameState) {
 	exitLoop := false
 	for {
 		words := gamelogic.GetInput()
