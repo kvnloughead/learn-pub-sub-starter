@@ -26,14 +26,22 @@ func main() {
 		log.Fatal("Failed to receive username")
 	}
 
+	fmt.Println("Starting Peril client...")
+	gameState := gamelogic.NewGameState(username)
+
 	pauseQueueName := fmt.Sprintf("%s.%s", routing.PauseKey, username)
-	_, _, err = pubsub.DeclareAndBind(rbtConn, routing.ExchangePerilDirect, pauseQueueName, routing.PauseKey, pubsub.TransientQueue)
+
+	err = pubsub.SubscribeJSON(
+		rbtConn,
+		routing.ExchangePerilDirect,
+		pauseQueueName,
+		routing.PauseKey,
+		pubsub.TransientQueue,
+		handlerPause(gameState),
+	)
 	if err != nil {
 		log.Fatal("Failed to declare and bind the pause queue")
 	}
-
-	fmt.Println("Starting Peril client...")
-	gameState := gamelogic.NewGameState(username)
 
 	startClientCommandLoop(gameState)
 }
@@ -88,4 +96,11 @@ func startClientCommandLoop(gameState *gamelogic.GameState) {
 	<-signalChan
 
 	fmt.Println("RabbitMQ connection closed")
+}
+
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
+	return func(ps routing.PlayingState) {
+		defer fmt.Print("> ")
+		gs.HandlePause(ps)
+	}
 }
