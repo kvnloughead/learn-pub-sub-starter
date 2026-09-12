@@ -6,13 +6,14 @@ import (
 	"os"
 	"os/signal"
 
-	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 )
 
 func main() {
 	rbtConnStr := "amqp://guest:guest@localhost:5672/"
-
-	rbtConn, err := amqp.Dial(rbtConnStr)
+	rbtConn, rbtChan, err := pubsub.ConnectToRabbit(rbtConnStr)
 	if err != nil {
 		log.Fatal("Failed to connect to RabbitMQ")
 	}
@@ -20,11 +21,59 @@ func main() {
 
 	fmt.Println("Connected to RabbitMQ on port 5672")
 	fmt.Println("Starting Peril server...")
+	gamelogic.PrintServerHelp()
 
-	// Shutdown on Ctrl+C
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
-	<-signalChan
 
-	fmt.Println("\nShutting down Peril server")
+	inputChan := make(chan []string)
+	readyChan := make(chan struct{})
+	go func() {
+		for {
+			<-readyChan // block
+			inputChan <- gamelogic.GetInput()
+		}
+	}()
+	readyChan <- struct{}{} // unblock
+
+loop:
+	for {
+		select {
+		case <-signalChan:
+			fmt.Println("\nShutting down Peril server")
+			break loop
+
+		case words := <-inputChan:
+			if len(words) == 0 {
+				readyChan <- struct{}{}
+				continue
+			}
+
+			cmd := words[0]
+			switch cmd {
+			case "pause":
+				err = pubsub.PublishJSON(rbtChan, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
+				if err != nil {
+					log.Fatal("Failed to publish pause command")
+				}
+				fmt.Println("\nSending pause message")
+
+			case "resume":
+				err = pubsub.PublishJSON(rbtChan, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
+				if err != nil {
+					log.Fatal("Failed to publish unpause command")
+				}
+				fmt.Println("\nSending unpause message")
+
+			case "quit":
+				fmt.Println("\nExiting program")
+				break loop
+
+			default:
+				fmt.Println("\nUnknown command")
+			}
+
+			readyChan <- struct{}{} // unblock
+		}
+	}
 }
