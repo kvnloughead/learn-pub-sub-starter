@@ -56,21 +56,21 @@ loop:
 				if err != nil {
 					log.Fatal("Failed to publish pause command")
 				}
-				fmt.Println("\nSending pause message")
+				fmt.Println("Sending pause message")
 
 			case "resume":
 				err = pubsub.PublishJSON(rbtChan, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
 				if err != nil {
 					log.Fatal("Failed to publish unpause command")
 				}
-				fmt.Println("\nSending unpause message")
+				fmt.Println("Sending unpause message")
 
 			case "quit":
-				fmt.Println("\nExiting program")
+				fmt.Println("Exiting program")
 				break loop
 
 			default:
-				fmt.Println("\nUnknown command")
+				fmt.Println("Unknown command")
 			}
 
 			readyChan <- struct{}{} // unblock

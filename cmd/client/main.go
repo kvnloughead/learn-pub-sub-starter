@@ -30,10 +30,66 @@ func main() {
 		log.Fatal("Failed to declare and bind to pause queue")
 	}
 
-	// Shutdown on Ctrl+C
+	gs := gamelogic.NewGameState(username)
+
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
-	<-signalChan
 
-	fmt.Println("\nShutting down Peril client")
+	inputChan := make(chan []string)
+	readyChan := make(chan struct{})
+	go func() {
+		for {
+			<-readyChan // block
+			inputChan <- gamelogic.GetInput()
+		}
+	}()
+	readyChan <- struct{}{} // unblock
+
+loop:
+	for {
+		select {
+		case <-signalChan:
+			gamelogic.PrintQuit()
+			break loop
+
+		case words := <-inputChan:
+			if len(words) == 0 {
+				readyChan <- struct{}{}
+				continue
+			}
+
+			cmd := words[0]
+			switch cmd {
+			case "spawn":
+				err = gs.CommandSpawn(words)
+				if err != nil {
+					fmt.Println(err.Error())
+				}
+
+			case "move":
+				_, err := gs.CommandMove(words)
+				if err != nil {
+					fmt.Println(err.Error())
+				}
+
+			case "status":
+				gs.CommandStatus()
+
+			case "help":
+				gamelogic.PrintClientHelp()
+
+			case "spam":
+				fmt.Println("Spamming not allowed yet!")
+
+			case "quit":
+				gamelogic.PrintQuit()
+				break loop
+
+			default:
+				fmt.Println("Unknown command")
+			}
+
+			readyChan <- struct{}{} // unblock
+		}
+	}
 }
