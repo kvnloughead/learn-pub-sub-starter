@@ -24,13 +24,13 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
+	gs := gamelogic.NewGameState(username)
+
 	pauseQueueName := fmt.Sprintf("%s.%s", routing.PauseKey, username)
-	_, _, err = pubsub.DeclareAndBind(rbtConn, routing.ExchangePerilDirect, pauseQueueName, routing.PauseKey, pubsub.Durable)
+	err = pubsub.SubscribeJSON(rbtConn, routing.ExchangePerilDirect, pauseQueueName, routing.PauseKey, pubsub.Transient, handlerPause(gs))
 	if err != nil {
 		log.Fatal("Failed to declare and bind to pause queue")
 	}
-
-	gs := gamelogic.NewGameState(username)
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
@@ -91,5 +91,12 @@ loop:
 
 			readyChan <- struct{}{} // unblock
 		}
+	}
+}
+
+func handlerPause(gs *gamelogic.GameState) func(ps routing.PlayingState) {
+	return func(ps routing.PlayingState) {
+		defer fmt.Println(("> "))
+		gs.HandlePause(ps)
 	}
 }

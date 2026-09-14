@@ -23,6 +23,11 @@ func main() {
 	fmt.Println("Starting Peril server...")
 	gamelogic.PrintServerHelp()
 
+	_, _, err = pubsub.DeclareAndBind(rbtConn, routing.ExchangePerilTopic, routing.GameLogSlug, routing.GameLogSlug+".*", pubsub.Durable)
+	if err != nil {
+		log.Fatal("Failed to declare and bind the games log queue")
+	}
+
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
 
