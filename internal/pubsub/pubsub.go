@@ -15,6 +15,14 @@ const (
 	Transient SimpleQueueType = "transient"
 )
 
+type AckType string
+
+const (
+	Ack         AckType = "ack"
+	NackRequeue AckType = "nack_requeue"
+	NackDiscard AckType = "nack_discard"
+)
+
 func ConnectToRabbit(connStr string) (*amqp.Connection, *amqp.Channel, error) {
 	conn, err := amqp.Dial(connStr)
 	if err != nil {
@@ -77,7 +85,7 @@ func SubscribeJSON[T any](
 	queueName,
 	key string,
 	queueType SimpleQueueType,
-	handler func(T),
+	handler func(T) AckType,
 ) error {
 	rbtChan, _, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
 	if err != nil {
@@ -97,8 +105,16 @@ func SubscribeJSON[T any](
 				fmt.Println("error unmarshalling message:", err)
 				continue
 			}
-			handler(msg)
-			delivery.Ack(false)
+
+			ack := handler(msg)
+			switch ack {
+			case Ack:
+				delivery.Ack(false)
+			case NackRequeue:
+				delivery.Nack(false, true)
+			case NackDiscard:
+				delivery.Nack(false, false)
+			}
 		}
 	}()
 
