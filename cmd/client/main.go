@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -41,7 +42,7 @@ func main() {
 	}
 
 	warQueueKey := routing.WarRecognitionsPrefix + ".*"
-	err = pubsub.SubscribeJSON(rbtConn, routing.ExchangePerilTopic, "war", warQueueKey, pubsub.Durable, handlerWar(gs))
+	err = pubsub.SubscribeJSON(rbtConn, routing.ExchangePerilTopic, "war", warQueueKey, pubsub.Durable, handlerWar(gs, rbtChan))
 	if err != nil {
 		log.Fatal("Failed to declare and bind to war queue: " + err.Error())
 	}
@@ -140,24 +141,60 @@ func handlerMove(gs *gamelogic.GameState, rbtChan *amqp.Channel) func(move gamel
 	}
 }
 
-func handlerWar(gs *gamelogic.GameState) func(rw gamelogic.RecognitionOfWar) pubsub.AckType {
+func handlerWar(gs *gamelogic.GameState, rbtChan *amqp.Channel) func(rw gamelogic.RecognitionOfWar) pubsub.AckType {
 	return func(rw gamelogic.RecognitionOfWar) pubsub.AckType {
 		defer fmt.Print("> ")
-		outcome, _, _ := gs.HandleWar(rw)
+		outcome, winner, loser := gs.HandleWar(rw)
 
 		switch outcome {
 		case gamelogic.WarOutcomeNotInvolved:
 			return pubsub.NackRequeue
+
 		case gamelogic.WarOutcomeNoUnits:
 			return pubsub.NackDiscard
+
 		case gamelogic.WarOutcomeOpponentWon:
+			msg := fmt.Sprintf("%s won a war against %s", winner, loser)
+			err := publishGameLog(gs, rbtChan, msg)
+			if err != nil {
+				return pubsub.NackRequeue
+			}
 			return pubsub.Ack
+
 		case gamelogic.WarOutcomeYouWon:
+			msg := fmt.Sprintf("%s won a war against %s", winner, loser)
+			err := publishGameLog(gs, rbtChan, msg)
+			if err != nil {
+				return pubsub.NackRequeue
+			}
 			return pubsub.Ack
+
 		case gamelogic.WarOutcomeDraw:
+			msg := fmt.Sprintf("A war between %s and %s resulted in a draw", winner, loser)
+			err := publishGameLog(gs, rbtChan, msg)
+			if err != nil {
+				return pubsub.NackRequeue
+			}
 			return pubsub.Ack
+
 		default:
 			return pubsub.NackDiscard
 		}
 	}
+}
+
+func publishGameLog(gs *gamelogic.GameState, rbtChan *amqp.Channel, msg string) error {
+	key := routing.GameLogSlug + "." + gs.Player.Username
+	v := routing.GameLog{
+		CurrentTime: time.Now(),
+		Message:     msg,
+		Username:    gs.Player.Username,
+	}
+
+	err := pubsub.PublishGob(rbtChan, routing.ExchangePerilTopic, key, &v)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

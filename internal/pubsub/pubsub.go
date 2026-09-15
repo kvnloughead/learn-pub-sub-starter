@@ -38,19 +38,6 @@ func ConnectToRabbit(connStr string) (*amqp.Connection, *amqp.Channel, error) {
 	return conn, rbtChan, nil
 }
 
-func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
-	jsonVal, err := json.Marshal(val)
-	if err != nil {
-		return err
-	}
-
-	msg := amqp.Publishing{
-		ContentType: "application/json",
-		Body:        jsonVal,
-	}
-	return ch.PublishWithContext(context.Background(), exchange, key, false, false, msg)
-}
-
 func DeclareAndBind(
 	conn *amqp.Connection,
 	exchange,
@@ -78,6 +65,23 @@ func DeclareAndBind(
 	}
 
 	return rbtChan, queue, err
+}
+
+//
+// encoding/json
+//
+
+func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
+	jsonVal, err := json.Marshal(val)
+	if err != nil {
+		return err
+	}
+
+	msg := amqp.Publishing{
+		ContentType: "application/json",
+		Body:        jsonVal,
+	}
+	return ch.PublishWithContext(context.Background(), exchange, key, false, false, msg)
 }
 
 func SubscribeJSON[T any](
@@ -120,4 +124,21 @@ func SubscribeJSON[T any](
 	}()
 
 	return nil
+}
+
+//
+// encoding/gob
+//
+
+func PublishGob[T any](ch *amqp.Channel, exchange, key string, val T) error {
+	v, err := json.Marshal(val)
+	if err != nil {
+		return err
+	}
+
+	msg := amqp.Publishing{
+		ContentType: "application/gob",
+		Body:        v,
+	}
+	return ch.PublishWithContext(context.Background(), exchange, key, false, false, msg)
 }
