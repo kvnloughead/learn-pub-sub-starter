@@ -1,7 +1,9 @@
 package pubsub
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 
@@ -102,6 +104,66 @@ func SubscribeJSON[T any](
 	}
 
 	return subscribe(conn, exchange, queueName, key, queueType, handler, unmarshalJSON)
+}
+
+//
+// encoding/gob
+//
+
+func encode[T any](val T) ([]byte, error) {
+	var data bytes.Buffer
+	enc := gob.NewEncoder(&data)
+	err := enc.Encode(val)
+	if err != nil {
+		return []byte{}, err
+	}
+	return data.Bytes(), nil
+}
+
+func decode[T any](data []byte) (T, error) {
+	var b bytes.Buffer
+	b.Write(data)
+
+	var val T
+	dec := gob.NewDecoder(&b)
+	err := dec.Decode(&val)
+	if err != nil {
+		return val, err
+	}
+
+	return val, nil
+}
+
+func PublishGob[T any](ch *amqp.Channel, exchange, key string, val T) error {
+	data, err := encode(val)
+	if err != nil {
+		return err
+	}
+
+	msg := amqp.Publishing{
+		ContentType: "application/gob",
+		Body:        data,
+	}
+	return ch.PublishWithContext(context.Background(), exchange, key, false, false, msg)
+}
+
+func SubscribeGob[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType,
+	handler func(T) AckType,
+) error {
+	unmarshalGob := func(data []byte) (T, error) {
+		msg, err := decode[T](data)
+		if err != nil {
+			return msg, err
+		}
+		return msg, nil
+	}
+
+	return subscribe(conn, exchange, queueName, key, queueType, handler, unmarshalGob)
 }
 
 func subscribe[T any](

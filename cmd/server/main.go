@@ -23,9 +23,10 @@ func main() {
 	fmt.Println("Starting Peril server...")
 	gamelogic.PrintServerHelp()
 
-	_, _, err = pubsub.DeclareAndBind(rbtConn, routing.ExchangePerilTopic, routing.GameLogSlug, routing.GameLogSlug+".*", pubsub.Durable)
+	// game_logs
+	err = pubsub.SubscribeGob(rbtConn, routing.ExchangePerilTopic, routing.GameLogSlug, routing.GameLogSlug+".*", pubsub.Durable, handlerGameLogs())
 	if err != nil {
-		log.Fatal("Failed to declare and bind the games log queue")
+		log.Fatal("Failed to subscribe to the game_logs queue")
 	}
 
 	signalChan := make(chan os.Signal, 1)
@@ -81,4 +82,18 @@ loop:
 			readyChan <- struct{}{} // unblock
 		}
 	}
+}
+
+func handlerGameLogs() func(gl routing.GameLog) pubsub.AckType {
+	return func(gl routing.GameLog) pubsub.AckType {
+		defer fmt.Print("> ")
+
+		err := gamelogic.WriteLog(gl)
+		if err != nil {
+			return pubsub.NackRequeue
+		}
+
+		return pubsub.Ack
+	}
+
 }
