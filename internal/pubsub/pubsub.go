@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -64,7 +65,7 @@ func DeclareAndBind(
 	}
 
 	isDurable := queueType == Durable
-	queue, err := rbtChan.QueueDeclare(queueName, isDurable, !isDurable, !isDurable, false, nil)
+	queue, err := rbtChan.QueueDeclare(queueName, isDurable, !isDurable, !isDurable, false, amqp.Table{"x-dead-letter-exchange": routing.ExchangePerilDeadLetter})
 	if err != nil {
 		fmt.Println("error", err.Error())
 		return nil, amqp.Queue{}, err
