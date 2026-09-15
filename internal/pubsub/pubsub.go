@@ -92,6 +92,27 @@ func SubscribeJSON[T any](
 	queueType SimpleQueueType,
 	handler func(T) AckType,
 ) error {
+	unmarshalJSON := func(data []byte) (T, error) {
+		var msg T
+		err := json.Unmarshal(data, &msg)
+		if err != nil {
+			return msg, err
+		}
+		return msg, nil
+	}
+
+	return subscribe(conn, exchange, queueName, key, queueType, handler, unmarshalJSON)
+}
+
+func subscribe[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType,
+	handler func(T) AckType,
+	unmarshaller func([]byte) (T, error),
+) error {
 	rbtChan, _, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
 	if err != nil {
 		return err
@@ -104,8 +125,7 @@ func SubscribeJSON[T any](
 
 	go func() {
 		for delivery := range deliveryChan {
-			var msg T
-			err := json.Unmarshal(delivery.Body, &msg)
+			msg, err := unmarshaller(delivery.Body)
 			if err != nil {
 				fmt.Println("error unmarshalling message:", err)
 				continue
@@ -124,21 +144,4 @@ func SubscribeJSON[T any](
 	}()
 
 	return nil
-}
-
-//
-// encoding/gob
-//
-
-func PublishGob[T any](ch *amqp.Channel, exchange, key string, val T) error {
-	v, err := json.Marshal(val)
-	if err != nil {
-		return err
-	}
-
-	msg := amqp.Publishing{
-		ContentType: "application/gob",
-		Body:        v,
-	}
-	return ch.PublishWithContext(context.Background(), exchange, key, false, false, msg)
 }
