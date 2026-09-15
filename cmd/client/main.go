@@ -9,6 +9,8 @@ import (
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
+
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 func main() {
@@ -33,9 +35,15 @@ func main() {
 	}
 
 	armyMovesQueueName := fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, username)
-	err = pubsub.SubscribeJSON(rbtConn, routing.ExchangePerilTopic, armyMovesQueueName, routing.ArmyMovesKey, pubsub.Transient, handlerMove(gs))
+	err = pubsub.SubscribeJSON(rbtConn, routing.ExchangePerilTopic, armyMovesQueueName, routing.ArmyMovesKey, pubsub.Transient, handlerMove(gs, rbtChan))
 	if err != nil {
 		log.Fatal("Failed to declare and bind to army moves queue: " + err.Error())
+	}
+
+	warQueueKey := routing.WarRecognitionsPrefix + ".*"
+	err = pubsub.SubscribeJSON(rbtConn, routing.ExchangePerilTopic, "war", warQueueKey, pubsub.Durable, handlerWar(gs))
+	if err != nil {
+		log.Fatal("Failed to declare and bind to war queue: " + err.Error())
 	}
 
 	signalChan := make(chan os.Signal, 1)
@@ -114,18 +122,42 @@ func handlerPause(gs *gamelogic.GameState) func(ps routing.PlayingState) pubsub.
 	}
 }
 
-func handlerMove(gs *gamelogic.GameState) func(move gamelogic.ArmyMove) pubsub.AckType {
+func handlerMove(gs *gamelogic.GameState, rbtChan *amqp.Channel) func(move gamelogic.ArmyMove) pubsub.AckType {
 	return func(move gamelogic.ArmyMove) pubsub.AckType {
 		defer fmt.Println(("> "))
-		outcome := gs.HandleMove(move)
+		outcome := gs.HandleMove(move, rbtChan)
 
 		if outcome == gamelogic.MoveOutcomeSafe || outcome == gamelogic.MoveOutcomeMakeWar {
 			return pubsub.Ack
 		}
+		if outcome == gamelogic.MoveOutcomePublishingFailed {
+			return pubsub.NackRequeue
+		}
 		if outcome == gamelogic.MoveOutcomeSamePlayer {
 			return pubsub.NackDiscard
 		}
-
 		return pubsub.NackDiscard
+	}
+}
+
+func handlerWar(gs *gamelogic.GameState) func(rw gamelogic.RecognitionOfWar) pubsub.AckType {
+	return func(rw gamelogic.RecognitionOfWar) pubsub.AckType {
+		defer fmt.Print("> ")
+		outcome, _, _ := gs.HandleWar(rw)
+
+		switch outcome {
+		case gamelogic.WarOutcomeNotInvolved:
+			return pubsub.NackRequeue
+		case gamelogic.WarOutcomeNoUnits:
+			return pubsub.NackDiscard
+		case gamelogic.WarOutcomeOpponentWon:
+			return pubsub.Ack
+		case gamelogic.WarOutcomeYouWon:
+			return pubsub.Ack
+		case gamelogic.WarOutcomeDraw:
+			return pubsub.Ack
+		default:
+			return pubsub.NackDiscard
+		}
 	}
 }
