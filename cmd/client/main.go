@@ -13,7 +13,7 @@ import (
 
 func main() {
 	rbtConnStr := "amqp://guest:guest@localhost:5672/"
-	rbtConn, _, err := pubsub.ConnectToRabbit(rbtConnStr)
+	rbtConn, rbtChan, err := pubsub.ConnectToRabbit(rbtConnStr)
 	if err != nil {
 		log.Fatal("Failed to connect to RabbitMQ")
 	}
@@ -30,6 +30,12 @@ func main() {
 	err = pubsub.SubscribeJSON(rbtConn, routing.ExchangePerilDirect, pauseQueueName, routing.PauseKey, pubsub.Transient, handlerPause(gs))
 	if err != nil {
 		log.Fatal("Failed to declare and bind to pause queue")
+	}
+
+	armyMovesQueueName := fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, username)
+	err = pubsub.SubscribeJSON(rbtConn, routing.ExchangePerilTopic, armyMovesQueueName, routing.ArmyMovesKey, pubsub.Transient, handlerMove(gs))
+	if err != nil {
+		log.Fatal("Failed to declare and bind to army moves queue: " + err.Error())
 	}
 
 	signalChan := make(chan os.Signal, 1)
@@ -67,10 +73,16 @@ loop:
 				}
 
 			case "move":
-				_, err := gs.CommandMove(words)
+				move, err := gs.CommandMove(words)
 				if err != nil {
 					fmt.Println(err.Error())
 				}
+
+				err = pubsub.PublishJSON(rbtChan, routing.ExchangePerilTopic, armyMovesQueueName, move)
+				if err != nil {
+					log.Fatal("Failed to publish move")
+				}
+				fmt.Println("Sending move message")
 
 			case "status":
 				gs.CommandStatus()
@@ -98,5 +110,12 @@ func handlerPause(gs *gamelogic.GameState) func(ps routing.PlayingState) {
 	return func(ps routing.PlayingState) {
 		defer fmt.Println(("> "))
 		gs.HandlePause(ps)
+	}
+}
+
+func handlerMove(gs *gamelogic.GameState) func(move gamelogic.ArmyMove) {
+	return func(move gamelogic.ArmyMove) {
+		defer fmt.Println(("> "))
+		gs.HandleMove(move)
 	}
 }

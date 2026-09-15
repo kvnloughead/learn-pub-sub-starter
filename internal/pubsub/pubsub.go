@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -40,9 +39,7 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 		ContentType: "application/json",
 		Body:        jsonVal,
 	}
-	ch.PublishWithContext(context.Background(), exchange, key, false, false, msg)
-
-	return nil
+	return ch.PublishWithContext(context.Background(), exchange, key, false, false, msg)
 }
 
 func DeclareAndBind(
@@ -65,7 +62,7 @@ func DeclareAndBind(
 		return nil, amqp.Queue{}, err
 	}
 
-	err = rbtChan.QueueBind(queueName, key, routing.ExchangePerilDirect, false, nil)
+	err = rbtChan.QueueBind(queueName, key, exchange, false, nil)
 	if err != nil {
 		fmt.Println("error", err.Error())
 		return nil, amqp.Queue{}, err
